@@ -1,0 +1,89 @@
+{
+  "income_statement": {
+    "revenue": 10000000,
+    "total_revenue": 10000000,
+    "cost_of_goods_sold": 3000000,
+    "cogs": 3000000,
+    "operating_expenses": 2500000,
+    "opex": 2500000,
+    "depreciation": 500000,
+    "amortization": 100000,
+    "ebitda": 4500000,
+    "ebit": 3900000,
+    "interest_expense": 200000,
+    "tax_rate": 0.25,
+    "net_income": 2775000
+  },
+  "balance_sheet": {
+    "assets": {
+      "cash": 2000000,
+      "accounts_receivable": 1500000,
+      "inventory": 1000000,
+      "property_plant_equipment": 8000000,
+      "total_assets": 12500000
+    },
+    "liabilities": {
+      "accounts_payable": 1000000,
+      "short_term_debt": 500000,
+      "long_term_debt": 5000000,
+      "total_liabilities": 6500000
+    },
+    "equity": {
+      "common_stock": 2000000,
+      "retained_earnings": 4000000,
+      "total_equity": 6000000
+    },
+    "total_assets": 12500000,
+    "total_liabilities": 6500000,
+    "total_equity": 6000000
+  },
+  "cash_flow": {
+    "cash_from_operations": 3875000,
+    "operating_cash_flow": 3875000,
+    "depreciation": 500000,
+    "amortization": 100000,
+    "working_capital_changes": 0,
+    "capital_expenditures": 1000000,
+    "capex": 1000000,
+    "free_cash_flow": 2875000
+  },
+  "kpi_table": {
+    "revenue": 10000000,
+    "ebitda": 4500000,
+    "ebitda_margin": 45.0,
+    "net_income": 2775000,
+    "net_margin": 27.75,
+    "roe": 46.25,
+    "roa": 22.2,
+    "current_ratio": 3.0,
+    "debt_to_equity": 0.83
+  },
+  "industry_averages": {
+    "ebitda_margin": 40.0,
+    "net_margin": 25.0,
+    "roa": 20.0
+  },
+  "notes": {
+    "revenue_growth": "Revenue grew 10% year-over-year",
+    "margin_improvement": "EBITDA margin improved by 200 bps",
+    "capex_notes": "Capital expenditures focused on technology infrastructure"
+  },
+  "index": {
+    "revenue": {
+      "page": 1,
+      "section": "Income Statement",
+      "paragraph": 2
+    },
+    "ebitda": {
+      "page": 1,
+      "section": "Income Statement",
+      "paragraph": 5
+    },
+    "net_income": {
+      "page": 1,
+      "section": "Income Statement",
+      "paragraph": 8
+    }
+  }
+}
+
