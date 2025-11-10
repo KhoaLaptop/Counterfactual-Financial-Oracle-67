@@ -28,7 +28,7 @@ load_dotenv()
 
 # Page config
 st.set_page_config(
-    page_title="Financial Analysis Pipeline",
+    page_title="Counterfactual Financial Oracle",
     page_icon="📊",
     layout="wide"
 )
@@ -109,7 +109,7 @@ async def run_pipeline(report_json: Dict[str, Any], user_controls: Dict[str, flo
 
 def main():
     """Main Streamlit app."""
-    st.title("📊 Financial Analysis Pipeline")
+    st.title("📊 Counterfactual Financial Oracle")
     st.markdown("""
     This application performs comprehensive financial analysis including:
     - Landing AI ADE JSON ingestion

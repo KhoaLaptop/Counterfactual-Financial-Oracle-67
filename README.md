@@ -1,6 +1,6 @@
-# Financial Analysis Pipeline
+# Counterfactual Financial Oracle
 
-A complete Python project that implements a comprehensive financial analysis pipeline with AI-powered simulation, critique, and evaluation.
+Counterfactual Financial Oracle is a complete Python project that implements a comprehensive financial analysis pipeline with AI-powered simulation, critique, and evaluation.
 
 ## Features
 

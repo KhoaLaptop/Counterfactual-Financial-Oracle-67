@@ -67,6 +67,15 @@ STOP_WORDS_INCOME_STATEMENT = [
     "shares used in computing earnings per share"
 ]
 
+# Check if we should force HTTP fallback (useful if the official SDK hangs)
+def _is_truthy_env(var_name: str) -> bool:
+    value = os.getenv(var_name)
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+FORCE_HTTP_FALLBACK = _is_truthy_env("LANDINGAI_ADE_FORCE_HTTP")
+
 # Try to import Landing AI ADE library
 try:
     from landingai_ade import LandingAIADE
@@ -113,9 +122,17 @@ def extract_from_pdf(pdf_path: str, api_key: Optional[str] = None) -> Dict[str, 
         raise ValueError("Landing AI API key not provided. Set LANDINGAI_API_KEY or VISION_AGENT_API_KEY environment variable.")
     
     # Use official library if available
-    if LANDINGAI_ADE_AVAILABLE:
+    if LANDINGAI_ADE_AVAILABLE and not FORCE_HTTP_FALLBACK:
         try:
-            ade_client = LandingAIADE()
+            timeout_override = os.getenv("LANDINGAI_ADE_REQUEST_TIMEOUT")
+            timeout_seconds: Optional[float] = None
+            if timeout_override:
+                try:
+                    timeout_seconds = float(timeout_override)
+                except ValueError:
+                    print(f"Invalid LANDINGAI_ADE_REQUEST_TIMEOUT value '{timeout_override}', using library default.")
+
+            ade_client = LandingAIADE(timeout=timeout_seconds)
             
             # Parse the document
             parse_response = ade_client.parse(
@@ -170,7 +187,7 @@ def extract_from_pdf_bytes(pdf_bytes: bytes, filename: str, api_key: Optional[st
         raise ValueError("Landing AI API key not provided. Set LANDINGAI_API_KEY or VISION_AGENT_API_KEY environment variable.")
     
     # Write to temporary file and use library if available
-    if LANDINGAI_ADE_AVAILABLE:
+    if LANDINGAI_ADE_AVAILABLE and not FORCE_HTTP_FALLBACK:
         try:
             import tempfile
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
