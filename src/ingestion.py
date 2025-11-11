@@ -14,9 +14,17 @@ from bs4 import BeautifulSoup
 
 load_dotenv()
 
+# Temporary hardcoded Landing AI API key fallback requested by user.
+# NOTE: This is insecure and should be removed once proper environment management is restored.
+_HARDCODED_LANDINGAI_API_KEY = "pat_Q9wlL9jZVnWVnezrIcXqvoqnHrbxeZoi"
+
 
 INCOME_STATEMENT_FIELD_MAP = {
     "total net sales": [("income_statement", "revenue"), ("income_statement", "total_revenue")],
+    "net sales": [("income_statement", "revenue"), ("income_statement", "total_revenue")],
+    "revenue": [("income_statement", "revenue"), ("income_statement", "total_revenue")],
+    "total revenue": [("income_statement", "revenue"), ("income_statement", "total_revenue")],
+    "turnover": [("income_statement", "revenue"), ("income_statement", "total_revenue")],
     "total cost of sales": [("income_statement", "cost_of_goods_sold")],
     "gross margin": [("income_statement", "gross_margin")],
     "research and development": [("income_statement", "research_and_development")],
@@ -114,7 +122,11 @@ def extract_from_pdf(pdf_path: str, api_key: Optional[str] = None) -> Dict[str, 
     if api_key:
         os.environ["VISION_AGENT_API_KEY"] = api_key
     else:
-        api_key = os.getenv("LANDINGAI_API_KEY") or os.getenv("VISION_AGENT_API_KEY")
+        api_key = (
+            os.getenv("LANDINGAI_API_KEY")
+            or os.getenv("VISION_AGENT_API_KEY")
+            or _HARDCODED_LANDINGAI_API_KEY
+        )
         if api_key:
             os.environ["VISION_AGENT_API_KEY"] = api_key
     
@@ -179,7 +191,11 @@ def extract_from_pdf_bytes(pdf_bytes: bytes, filename: str, api_key: Optional[st
     if api_key:
         os.environ["VISION_AGENT_API_KEY"] = api_key
     else:
-        api_key = os.getenv("LANDINGAI_API_KEY") or os.getenv("VISION_AGENT_API_KEY")
+        api_key = (
+            os.getenv("LANDINGAI_API_KEY")
+            or os.getenv("VISION_AGENT_API_KEY")
+            or _HARDCODED_LANDINGAI_API_KEY
+        )
         if api_key:
             os.environ["VISION_AGENT_API_KEY"] = api_key
     
@@ -228,55 +244,26 @@ def _extract_from_pdf_bytes_http(pdf_bytes: bytes, filename: str, api_key: Optio
     if not api_key:
         raise ValueError("Landing AI API key not provided.")
     
-    # Encode PDF to base64
-    pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+    # Determine official endpoint
+    env = os.getenv("LANDINGAI_ADE_ENV", "").lower()
+    api_url = "https://api.va.eu-west-1.landing.ai/v1/ade/parse" if env == "eu" else "https://api.va.landing.ai/v1/ade/parse"
     
-    # Prepare API request - try different possible endpoints
-    api_urls = [
-        "https://api.landing.ai/v1/ade/parse",
-        "https://predict.app.landing.ai/v1/ade/parse",
-    ]
+    headers = {"Authorization": f"Bearer {api_key}"}
+    data = {"model": "dpt-2-latest"}
+    files = {"document": (filename, pdf_bytes, "application/pdf")}
     
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "file": {
-            "content": pdf_base64,
-            "filename": filename
-        },
-        "parse_options": {
-            "output_format": "json",
-            "extract_tables": True,
-            "extract_figures": False
-        }
-    }
-    
-    # Try each endpoint
-    for api_url in api_urls:
-        try:
-            response = requests.post(api_url, headers=headers, json=payload, timeout=300)
-            response.raise_for_status()
-            
-            result = response.json()
-            
-            # ADE API returns data in different formats, normalize it
-            if "data" in result:
-                return result["data"]
-            elif "result" in result:
-                return result["result"]
-            elif "extracted_data" in result:
-                return result["extracted_data"]
-            else:
-                # If the response is already the extracted data, return it
-                return result
-        
-        except requests.exceptions.RequestException as e:
-            continue
-    
-    raise Exception(f"Landing AI ADE API error: Unable to connect to any endpoint")
+    try:
+        response = requests.post(api_url, headers=headers, data=data, files=files, timeout=300)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as http_err:
+        status_code = http_err.response.status_code if http_err.response else "unknown"
+        body = http_err.response.text if http_err.response else str(http_err)
+        error_detail = f"{api_url} -> HTTP {status_code}: {body}"
+        raise Exception(f"Landing AI ADE API error: {error_detail}") from http_err
+    except requests.exceptions.RequestException as req_err:
+        error_detail = f"{api_url} -> {type(req_err).__name__}: {req_err}"
+        raise Exception(f"Landing AI ADE API error: {error_detail}") from req_err
 
 
 def _extract_tables_from_markdown(markdown: str) -> List[Dict[str, Any]]:
@@ -314,12 +301,46 @@ def _populate_financials_from_markdown(markdown: str, normalized: Dict[str, Any]
             continue
 
         header_text = " ".join(" ".join(r).lower() for r in rows[:2])
-        if "statement" in header_text and "operations" in header_text:
-            _apply_table_mapping(rows, INCOME_STATEMENT_FIELD_MAP, normalized, table_type="income_statement")
-        elif "balance sheet" in header_text:
-            _apply_table_mapping(rows, BALANCE_SHEET_FIELD_MAP, normalized, table_type="balance_sheet")
-        elif "cash flows" in header_text:
-            _apply_table_mapping(rows, CASH_FLOW_FIELD_MAP, normalized, table_type="cash_flow")
+        def label_contains(rows: List[List[str]], phrases: List[str]) -> bool:
+            for row in rows:
+                if not row:
+                    continue
+                cell = (row[0] or "").lower()
+                if any(phrase in cell for phrase in phrases):
+                    return True
+            return False
+
+        table_mapped = False
+
+        if ("statement" in header_text and "operations" in header_text) or label_contains(
+            rows, ["net sales", "gross margin", "operating income"]
+        ):
+            table_mapped |= _apply_table_mapping(
+                rows, INCOME_STATEMENT_FIELD_MAP, normalized, table_type="income_statement"
+            )
+        if "balance sheet" in header_text or label_contains(
+            rows, ["total assets", "total liabilities", "shareholders' equity"]
+        ):
+            table_mapped |= _apply_table_mapping(
+                rows, BALANCE_SHEET_FIELD_MAP, normalized, table_type="balance_sheet"
+            )
+        if "cash flows" in header_text or label_contains(
+            rows, ["cash generated by operating activities", "cash used in financing activities"]
+        ):
+            table_mapped |= _apply_table_mapping(
+                rows, CASH_FLOW_FIELD_MAP, normalized, table_type="cash_flow"
+            )
+
+        if not table_mapped:
+            table_mapped |= _apply_table_mapping(
+                rows, INCOME_STATEMENT_FIELD_MAP, normalized, table_type="income_statement"
+            )
+            table_mapped |= _apply_table_mapping(
+                rows, BALANCE_SHEET_FIELD_MAP, normalized, table_type="balance_sheet"
+            )
+            table_mapped |= _apply_table_mapping(
+                rows, CASH_FLOW_FIELD_MAP, normalized, table_type="cash_flow"
+            )
 
 
 def _apply_table_mapping(
@@ -327,7 +348,8 @@ def _apply_table_mapping(
     mapping: Dict[str, List[Tuple[str, str]]],
     normalized: Dict[str, Any],
     table_type: str,
-) -> None:
+) -> bool:
+    updated = False
     for row in rows:
         if not row:
             continue
@@ -345,7 +367,10 @@ def _apply_table_mapping(
             if key in label:
                 for section, field in targets:
                     _assign_value(normalized, section, field, value)
+                    updated = True
                 break
+
+    return updated
 
 
 def _normalize_label(label: str) -> str:

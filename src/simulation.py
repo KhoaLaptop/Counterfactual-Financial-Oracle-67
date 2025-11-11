@@ -163,13 +163,59 @@ class SimulationEngine:
                     raise e2
             
             # Only enhance with local Monte Carlo if OpenAI didn't provide complete results
-            if "monte_carlo" not in simulation_json or "results" not in simulation_json.get("monte_carlo", {}):
+            monte_carlo = simulation_json.get("monte_carlo", {})
+            results = monte_carlo.get("results", {})
+
+            def _is_incomplete(results_dict: Dict[str, Any]) -> bool:
+                if not results_dict:
+                    return True
+                required_metrics = ["revenue", "ebitda", "free_cash_flow", "npv"]
+                for metric in required_metrics:
+                    metric_data = results_dict.get(metric, {})
+                    if not isinstance(metric_data, dict):
+                        return True
+                    median_val = metric_data.get("median")
+                    if median_val is None:
+                        return True
+                return False
+
+            if not monte_carlo or _is_incomplete(results):
                 print("[DEBUG] OpenAI response missing Monte Carlo data, enhancing with local simulation...")
                 simulation_json = await self._enhance_with_local_monte_carlo(
                     report_json, user_controls, simulation_json
                 )
             else:
                 print("[DEBUG] Using OpenAI Monte Carlo results directly")
+            
+            # Ensure required formula projections exist; fill from local simulation if missing
+            required_metrics = ["revenue", "ebitda", "net_income", "free_cash_flow", "npv"]
+
+            def _projection_missing(proj_dict: Dict[str, Any], item: str) -> bool:
+                entry = proj_dict.get(item)
+                if not isinstance(entry, dict):
+                    return True
+                value = entry.get("value")
+                return not isinstance(value, (int, float))
+
+            formula_projections = simulation_json.setdefault("formula_projections", {})
+            missing_metrics = [
+                metric for metric in required_metrics if _projection_missing(formula_projections, metric)
+            ]
+
+            if missing_metrics:
+                print(f"[DEBUG] Formula projections missing metrics {missing_metrics}, computing locally...")
+                try:
+                    local_simulation = await self._run_local_simulation(report_json, user_controls)
+                    local_fp = local_simulation.get("formula_projections", {})
+                    for metric in missing_metrics:
+                        if isinstance(local_fp.get(metric), dict):
+                            formula_projections[metric] = local_fp[metric]
+
+                    local_mc = local_simulation.get("monte_carlo")
+                    if local_mc and _is_incomplete(simulation_json.get("monte_carlo", {}).get("results", {})):
+                        simulation_json["monte_carlo"] = local_mc
+                except Exception as local_err:
+                    print(f"[WARNING] Unable to supplement formula projections locally: {local_err}")
             
             return simulation_json
         

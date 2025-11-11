@@ -332,9 +332,17 @@ def main():
                 for idx, (metric, data) in enumerate(projections.items()):
                     with cols[idx % 2]:
                         if isinstance(data, dict):
-                            value = data.get("value", 0.0)
+                            value = data.get("value")
                             formula = data.get("formula", "")
-                            st.metric(metric.upper(), f"${value:,.2f}" if abs(value) >= 1 else f"{value:.4f}")
+                            if value is None:
+                                st.metric(metric.upper(), "N/A")
+                            else:
+                                try:
+                                    numeric_value = float(value)
+                                except (TypeError, ValueError):
+                                    st.metric(metric.upper(), str(value))
+                                else:
+                                    st.metric(metric.upper(), f"${numeric_value:,.2f}" if abs(numeric_value) >= 1 else f"{numeric_value:.4f}")
                             st.caption(f"Formula: {formula}")
             
             # Monte Carlo Results
@@ -345,11 +353,19 @@ def main():
                 mc_data = []
                 for metric, data in mc_results.items():
                     if isinstance(data, dict):
+                        def format_value(val):
+                            if val is None:
+                                return "N/A"
+                            try:
+                                return f"${val:,.2f}"
+                            except (TypeError, ValueError):
+                                return str(val)
+
                         mc_data.append({
                             "Metric": metric.upper().replace("_", " "),
-                            "Median": f"${data.get('median', 0):,.2f}",
-                            "10th Percentile": f"${data.get('p10', 0):,.2f}",
-                            "90th Percentile": f"${data.get('p90', 0):,.2f}"
+                            "Median": format_value(data.get("median")),
+                            "10th Percentile": format_value(data.get("p10")),
+                            "90th Percentile": format_value(data.get("p90"))
                         })
                 
                 if mc_data:
