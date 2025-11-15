@@ -17,6 +17,7 @@ from .financial_formulas import (
     calculate_npv,
     apply_delta_percentage
 )
+from .validators import validate_evaluation_output, validate_simulation_output
 
 load_dotenv()
 
@@ -85,12 +86,21 @@ class EvaluatorEngine:
         """
         # If approved, return simulation as-is
         if critic_json.get("verdict") == "approve":
-            return {
+            evaluation_json = {
                 "final_simulation": simulation_json,
                 "applied_fixes": [],
                 "assumption_log": [],
                 "status": "approved"
             }
+            
+            # Validate evaluation output
+            is_valid, errors = validate_evaluation_output(evaluation_json)
+            if not is_valid:
+                print(f"[WARNING] Evaluation output validation found {len(errors)} issue(s):")
+                for error in errors[:5]:
+                    print(f"  - {error}")
+            
+            return evaluation_json
         
         # If revision needed, apply fixes
         if critic_json.get("verdict") == "revise":
@@ -121,22 +131,49 @@ class EvaluatorEngine:
                 content = response.choices[0].message.content
                 evaluation_json = json.loads(content)
                 
-                return {
+                evaluation_json = {
                     **evaluation_json,
                     "status": "revised"
                 }
+                
+                # Validate evaluation output
+                is_valid, errors = validate_evaluation_output(evaluation_json)
+                if not is_valid:
+                    print(f"[WARNING] Evaluation output validation found {len(errors)} issue(s):")
+                    for error in errors[:5]:
+                        print(f"  - {error}")
+                
+                return evaluation_json
             
             except Exception as e:
                 print(f"ChatGPT API error: {e}, applying fixes locally")
-                return self._apply_fixes_locally(simulation_json, critic_json, report_json)
+                evaluation_json = self._apply_fixes_locally(simulation_json, critic_json, report_json)
+                
+                # Validate evaluation output
+                is_valid, errors = validate_evaluation_output(evaluation_json)
+                if not is_valid:
+                    print(f"[WARNING] Evaluation output validation found {len(errors)} issue(s):")
+                    for error in errors[:5]:
+                        print(f"  - {error}")
+                
+                return evaluation_json
         
         # Default: return simulation as-is
-        return {
+        evaluation_json = {
             "final_simulation": simulation_json,
             "applied_fixes": [],
             "assumption_log": [],
             "status": "unknown"
         }
+        
+        # Validate evaluation output
+        is_valid, errors = validate_evaluation_output(evaluation_json)
+        if not is_valid:
+            print(f"[WARNING] Evaluation output validation found {len(errors)} issue(s):")
+            for error in errors[:5]:
+                print(f"  - {error}")
+        
+        return evaluation_json
     
     def _apply_fixes_locally(
         self,
@@ -207,10 +244,19 @@ class EvaluatorEngine:
         else:
             revised_simulation["assumption_log"] = assumption_log
         
-        return {
+        evaluation_json = {
             "final_simulation": revised_simulation,
             "applied_fixes": applied_fixes,
             "assumption_log": assumption_log,
             "status": "revised"
         }
+        
+        # Validate evaluation output
+        is_valid, errors = validate_evaluation_output(evaluation_json)
+        if not is_valid:
+            print(f"[WARNING] Local fix application output validation found {len(errors)} issue(s):")
+            for error in errors[:5]:
+                print(f"  - {error}")
+        
+        return evaluation_json
 

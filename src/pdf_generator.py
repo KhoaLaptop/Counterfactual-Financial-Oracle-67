@@ -254,5 +254,103 @@ class PDFReportGenerator:
                     story.append(Paragraph(fix_text, self.styles.get('CustomBodyText', self.styles['Normal'])))
                     story.append(Spacer(1, 0.1*inch))
         
+        # Appendix: Key Inputs and Document Sources
+        story.append(PageBreak())
+        story.append(Paragraph("Appendix: Key Inputs and Document Sources", self.styles['SectionHeader']))
+        story.append(Spacer(1, 0.2*inch))
+        
+        # Extract key inputs from report_json
+        story.append(Paragraph("Key Financial Inputs", self.styles.get('CustomBodyText', self.styles['Normal'])))
+        story.append(Spacer(1, 0.1*inch))
+        
+        income_statement = report_json.get("income_statement", {})
+        key_inputs = []
+        
+        if income_statement.get("revenue") or income_statement.get("total_revenue"):
+            revenue = income_statement.get("revenue") or income_statement.get("total_revenue", 0)
+            key_inputs.append(["Revenue", f"${revenue:,.2f}"])
+        
+        if income_statement.get("opex") or income_statement.get("operating_expenses"):
+            opex = income_statement.get("opex") or income_statement.get("operating_expenses", 0)
+            key_inputs.append(["Operating Expenses", f"${opex:,.2f}"])
+        
+        if income_statement.get("cogs") or income_statement.get("cost_of_goods_sold"):
+            cogs = income_statement.get("cogs") or income_statement.get("cost_of_goods_sold", 0)
+            key_inputs.append(["Cost of Goods Sold", f"${cogs:,.2f}"])
+        
+        if income_statement.get("net_income"):
+            net_income = income_statement.get("net_income", 0)
+            key_inputs.append(["Net Income", f"${net_income:,.2f}"])
+        
+        if key_inputs:
+            inputs_table = Table([["Input", "Value"]] + key_inputs, colWidths=[3*inch, 2*inch])
+            inputs_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(inputs_table)
+            story.append(Spacer(1, 0.3*inch))
+        
+        # Document Sources
+        story.append(Paragraph("Document Sources (ADE Extraction)", self.styles.get('CustomBodyText', self.styles['Normal'])))
+        story.append(Spacer(1, 0.1*inch))
+        
+        index = report_json.get("index", {})
+        if index:
+            source_data = [["Field", "Source", "Method", "Location", "Original Text"]]
+            
+            for field_key, source_info in list(index.items())[:20]:  # Limit to first 20 for PDF
+                source = source_info.get("source", "Unknown")
+                method = source_info.get("extraction_method", "unknown")
+                location = ""
+                if "table_index" in source_info and "row_index" in source_info:
+                    location = f"Table {source_info['table_index']}, Row {source_info['row_index']}"
+                elif "page" in source_info:
+                    location = f"Page {source_info['page']}"
+                
+                original_text = source_info.get("original_text", "")[:50]  # First 50 chars
+                if len(source_info.get("original_text", "")) > 50:
+                    original_text += "..."
+                
+                source_data.append([
+                    field_key,
+                    source,
+                    method.replace("_", " ").title(),
+                    location,
+                    original_text
+                ])
+            
+            if len(index) > 20:
+                source_data.append([
+                    f"... and {len(index) - 20} more fields",
+                    "", "", "", ""
+                ])
+            
+            sources_table = Table(source_data, colWidths=[1.5*inch, 1*inch, 1*inch, 1.2*inch, 2.3*inch])
+            sources_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.lightgrey),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP')
+            ]))
+            story.append(sources_table)
+        else:
+            story.append(Paragraph(
+                "No source tracking information available. Fields may have been loaded from JSON without ADE extraction.",
+                self.styles.get('CustomBodyText', self.styles['Normal'])
+            ))
+        
         return story
 

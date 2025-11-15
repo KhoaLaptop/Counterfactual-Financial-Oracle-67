@@ -5,6 +5,7 @@ OpenAI simulation module with formula-driven projections and Monte Carlo simulat
 import os
 import json
 import asyncio
+import math
 from typing import Dict, List, Optional, Any
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -21,6 +22,8 @@ from .financial_formulas import (
     monte_carlo_simulation
 )
 from .ingestion import extract_kpis, get_field_reference
+from .validators import validate_simulation_output, validate_user_controls
+from .sanity_checks import check_financial_sanity, check_simulation_sanity, check_user_controls_sanity
 
 load_dotenv()
 
@@ -113,6 +116,27 @@ class SimulationEngine:
         Returns:
             Simulation results dictionary
         """
+        # Validate user controls
+        is_valid, warnings = validate_user_controls(user_controls)
+        if warnings:
+            print(f"[WARNING] User controls validation found {len(warnings)} warning(s):")
+            for warning in warnings[:3]:  # Show first 3 warnings
+                print(f"  - {warning}")
+        
+        # Run sanity checks on financial data before LLM processing
+        is_sane, sanity_warnings = check_financial_sanity(report_json)
+        if sanity_warnings:
+            print(f"[SANITY CHECK] Found {len(sanity_warnings)} sanity check warning(s):")
+            for warning in sanity_warnings[:5]:  # Show first 5 warnings
+                print(f"  - {warning}")
+        
+        # Run sanity checks on user controls
+        controls_sane, controls_warnings = check_user_controls_sanity(user_controls)
+        if controls_warnings:
+            print(f"[SANITY CHECK] User controls sanity check found {len(controls_warnings)} warning(s):")
+            for warning in controls_warnings[:3]:
+                print(f"  - {warning}")
+        
         # Prepare input for OpenAI
         input_data = {
             "report_json": report_json,
@@ -217,13 +241,49 @@ class SimulationEngine:
                 except Exception as local_err:
                     print(f"[WARNING] Unable to supplement formula projections locally: {local_err}")
             
+            # Validate simulation output
+            is_valid, errors = validate_simulation_output(simulation_json)
+            if not is_valid:
+                print(f"[WARNING] Simulation output validation found {len(errors)} issue(s):")
+                for error in errors[:5]:  # Show first 5 errors
+                    print(f"  - {error}")
+            
+            # Run sanity checks on simulation output
+            sim_sane, sim_warnings = check_simulation_sanity(simulation_json, report_json)
+            if sim_warnings:
+                print(f"[SANITY CHECK] Simulation output sanity check found {len(sim_warnings)} warning(s):")
+                for warning in sim_warnings[:5]:
+                    print(f"  - {warning}")
+            
+            # Apply LLM output guardrails (clamp/reject nonsense values)
+            simulation_json = _apply_llm_guardrails(simulation_json, report_json)
+            
             return simulation_json
         
         except Exception as e:
             # Fallback to local simulation if API fails
             print(f"[WARNING] OpenAI API error: {e}")
             print(f"[INFO] Falling back to local simulation using report data...")
-            return await self._run_local_simulation(report_json, user_controls)
+            simulation_json = await self._run_local_simulation(report_json, user_controls)
+            
+            # Validate local simulation output
+            is_valid, errors = validate_simulation_output(simulation_json)
+            if not is_valid:
+                print(f"[WARNING] Local simulation output validation found {len(errors)} issue(s):")
+                for error in errors[:5]:
+                    print(f"  - {error}")
+            
+            # Run sanity checks on simulation output
+            sim_sane, sim_warnings = check_simulation_sanity(simulation_json, report_json)
+            if sim_warnings:
+                print(f"[SANITY CHECK] Simulation output sanity check found {len(sim_warnings)} warning(s):")
+                for warning in sim_warnings[:5]:
+                    print(f"  - {warning}")
+            
+            # Apply LLM output guardrails
+            simulation_json = _apply_llm_guardrails(simulation_json, report_json)
+            
+            return simulation_json
     
     async def _enhance_with_local_monte_carlo(
         self,
@@ -532,5 +592,140 @@ class SimulationEngine:
             }
         )
         
+        # Validate local simulation output
+        is_valid, errors = validate_simulation_output(simulation_json)
+        if not is_valid:
+            print(f"[WARNING] Local simulation output validation found {len(errors)} issue(s):")
+            for error in errors[:5]:
+                print(f"  - {error}")
+        
+        # Apply LLM output guardrails
+        simulation_json = _apply_llm_guardrails(simulation_json, report_json)
+        
         return simulation_json
+
+
+def _apply_llm_guardrails(
+    simulation_json: Dict[str, Any],
+    report_json: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Apply deterministic guardrails to LLM outputs to clamp or reject nonsense values.
+    
+    This function ensures numeric outputs remain within physically possible bounds.
+    
+    Args:
+        simulation_json: Simulation results from LLM
+        report_json: Original report JSON for baseline comparison
+        
+    Returns:
+        Guarded simulation JSON with clamped/rejected values
+    """
+    # Get base revenue for comparison
+    income_statement = report_json.get("income_statement", {})
+    base_revenue = income_statement.get("revenue") or income_statement.get("total_revenue", 0)
+    
+    # Guard formula projections
+    formula_projections = simulation_json.get("formula_projections", {})
+    
+    # Clamp revenue to reasonable bounds (0 to 1000x base, or if base is 0, allow up to 1e12)
+    if "revenue" in formula_projections:
+        revenue_val = formula_projections["revenue"].get("value", 0)
+        if base_revenue > 0:
+            max_revenue = base_revenue * 1000
+            min_revenue = 0
+        else:
+            max_revenue = 1e12
+            min_revenue = 0
+        
+        if revenue_val < min_revenue or revenue_val > max_revenue:
+            print(f"[GUARDRAIL] Clamping revenue from {revenue_val:,.2f} to bounds [{min_revenue:,.2f}, {max_revenue:,.2f}]")
+            revenue_val = max(min_revenue, min(revenue_val, max_revenue))
+            formula_projections["revenue"]["value"] = revenue_val
+    
+    # Clamp EBITDA margin to -200% to 100%
+    if "revenue" in formula_projections and "ebitda" in formula_projections:
+        revenue_val = formula_projections["revenue"].get("value", 0)
+        ebitda_val = formula_projections["ebitda"].get("value", 0)
+        if revenue_val > 0:
+            ebitda_margin = (ebitda_val / revenue_val) * 100
+            if ebitda_margin > 100:
+                print(f"[GUARDRAIL] Clamping EBITDA margin from {ebitda_margin:.2f}% to 100%")
+                ebitda_val = revenue_val
+                formula_projections["ebitda"]["value"] = ebitda_val
+            elif ebitda_margin < -200:
+                print(f"[GUARDRAIL] Clamping EBITDA margin from {ebitda_margin:.2f}% to -200%")
+                ebitda_val = revenue_val * -2
+                formula_projections["ebitda"]["value"] = ebitda_val
+    
+    # Clamp NPV to reasonable bounds (if revenue > 0, NPV should be within -100x to 100x revenue)
+    if "npv" in formula_projections:
+        npv_val = formula_projections["npv"].get("value", 0)
+        if base_revenue > 0:
+            max_npv = base_revenue * 100
+            min_npv = base_revenue * -100
+        else:
+            max_npv = 1e12
+            min_npv = -1e12
+        
+        if abs(npv_val) > abs(max_npv):
+            print(f"[GUARDRAIL] Clamping NPV from {npv_val:,.2f} to bounds [{min_npv:,.2f}, {max_npv:,.2f}]")
+            npv_val = max(min_npv, min(npv_val, max_npv))
+            formula_projections["npv"]["value"] = npv_val
+    
+    # Guard Monte Carlo results
+    monte_carlo = simulation_json.get("monte_carlo", {}).get("results", {})
+    for metric, data in monte_carlo.items():
+        if not isinstance(data, dict):
+            continue
+        
+        median = data.get("median", 0)
+        p10 = data.get("p10", 0)
+        p90 = data.get("p90", 0)
+        
+        # Clamp percentiles to reasonable bounds based on metric type
+        if metric == "revenue" and base_revenue > 0:
+            max_val = base_revenue * 1000
+            min_val = 0
+            if median > max_val or median < min_val:
+                print(f"[GUARDRAIL] Clamping {metric} median from {median:,.2f} to bounds")
+                median = max(min_val, min(median, max_val))
+                data["median"] = median
+            if p10 > max_val or p10 < min_val:
+                p10 = max(min_val, min(p10, max_val))
+                data["p10"] = p10
+            if p90 > max_val or p90 < min_val:
+                p90 = max(min_val, min(p90, max_val))
+                data["p90"] = p90
+        
+        # Ensure percentile ordering: p10 <= median <= p90
+        if p10 > median:
+            print(f"[GUARDRAIL] Fixing percentile ordering: p10 ({p10:,.2f}) > median ({median:,.2f})")
+            p10 = median
+            data["p10"] = p10
+        if median > p90:
+            print(f"[GUARDRAIL] Fixing percentile ordering: median ({median:,.2f}) > p90 ({p90:,.2f})")
+            p90 = median
+            data["p90"] = p90
+    
+    # Reject NaN and Infinite values
+    def _clean_numeric_dict(d: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively clean NaN and Inf values from dictionary."""
+        cleaned = {}
+        for k, v in d.items():
+            if isinstance(v, dict):
+                cleaned[k] = _clean_numeric_dict(v)
+            elif isinstance(v, (int, float)):
+                if not (math.isnan(v) or math.isinf(v)):
+                    cleaned[k] = v
+                else:
+                    print(f"[GUARDRAIL] Rejecting {k}: {v} (NaN or Inf)")
+                    cleaned[k] = 0.0  # Replace with 0
+            else:
+                cleaned[k] = v
+        return cleaned
+    
+    simulation_json = _clean_numeric_dict(simulation_json)
+    
+    return simulation_json
 

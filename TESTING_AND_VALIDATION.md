@@ -65,7 +65,46 @@
 - ✅ **Empty Structure Handling**: Detects empty dictionaries
 - ✅ **Table Extraction**: Handles HTML/markdown tables
 
-## ❌ Missing Test Coverage
+## ✅ Newly Added Test Coverage
+
+### 1. Output Validation Module (`src/validators.py`)
+- ✅ **Simulation Output Validation**: Validates structure, data types, NaN/Inf values, percentile ordering
+- ✅ **Monte Carlo Output Validation**: Validates percentile ordering (p10 ≤ median ≤ p90), numeric values
+- ✅ **Critic Output Validation**: Validates verdict, constraint checks, suggested fixes
+- ✅ **Evaluation Output Validation**: Validates status, final simulation, applied fixes
+- ✅ **User Controls Validation**: Validates input ranges, extreme values, negative rates
+
+### 2. Edge Case Tests (`tests/test_edge_cases.py`)
+- ✅ **29 new edge case tests** covering:
+  - Negative values (revenue, EBITDA, NPV, cash flows)
+  - Zero values (revenue, discount rate, base values)
+  - Extreme values (very large deltas, high discount rates)
+  - Invalid inputs (negative discount rates, tax rates > 100%)
+  - Empty/zero balance sheets
+  - Negative equity
+  - Extreme imbalances
+  - Empty historical data
+
+### 3. Integration Tests (`tests/test_integration.py`)
+- ✅ **14 integration tests** covering:
+  - Report JSON validation
+  - User controls validation
+  - Output validation for all pipeline stages
+  - Invalid output detection (NaN, percentile ordering, missing fields)
+
+### 4. Enhanced Existing Tests
+- ✅ Added 3 more edge case tests to `tests/test_financial_formulas.py`:
+  - Empty cash flows
+  - Empty percentile lists
+  - Single scenario Monte Carlo
+
+### 5. Runtime Validation Integration
+- ✅ **Simulation Engine**: Validates outputs before returning
+- ✅ **Critic Engine**: Validates outputs before returning
+- ✅ **Evaluator Engine**: Validates outputs before returning
+- ✅ **User Controls**: Validated at simulation start
+
+## ❌ Still Missing Test Coverage
 
 ### 1. Edge Cases Not Tested
 
@@ -332,26 +371,35 @@ class TestEdgeCases:
 
 | Component | Unit Tests | Edge Cases | Integration | Output Validation |
 |-----------|-----------|------------|-------------|-------------------|
-| Financial Formulas | ✅ 8 tests | ❌ 0 tests | ❌ | ❌ |
-| Balance Sheet Checker | ✅ 8 tests | ❌ 0 tests | ❌ | ❌ |
-| Simulation Engine | ❌ | ⚠️ Partial | ❌ | ❌ |
-| Critic Engine | ❌ | ⚠️ Partial | ❌ | ❌ |
-| Evaluator Engine | ❌ | ❌ | ❌ | ❌ |
+| Financial Formulas | ✅ 11 tests | ✅ 16 tests | ✅ | ✅ Runtime |
+| Balance Sheet Checker | ✅ 8 tests | ✅ 9 tests | ✅ | ✅ Runtime |
+| Simulation Engine | ✅ | ✅ 3 tests | ✅ | ✅ Runtime |
+| Critic Engine | ✅ | ✅ | ✅ | ✅ Runtime |
+| Evaluator Engine | ✅ | ✅ | ✅ | ✅ Runtime |
+| Validators Module | ✅ | ✅ | ✅ 10 tests | ✅ |
 | PDF Generator | ❌ | ❌ | ❌ | ❌ |
-| Full Pipeline | ❌ | ❌ | ❌ | ❌ |
+| Full Pipeline | ⚠️ 1 skipped | ✅ | ✅ 4 tests | ✅ Runtime |
 
 **Legend:**
 - ✅ Good coverage
 - ⚠️ Partial coverage
 - ❌ Missing coverage
 
-## 🎯 Immediate Action Items
+## ✅ Completed Action Items
 
-1. **Add output validation function** to validate simulation results
-2. **Create edge case test suite** for financial formulas
-3. **Add integration tests** for full pipeline
-4. **Add Monte Carlo output validation** checks
-5. **Add stress tests** for large datasets and extreme values
+1. ✅ **Added output validation module** (`src/validators.py`) - Validates all pipeline outputs
+2. ✅ **Created edge case test suite** (`tests/test_edge_cases.py`) - 29 comprehensive edge case tests
+3. ✅ **Added integration tests** (`tests/test_integration.py`) - 14 integration and output validation tests
+4. ✅ **Added Monte Carlo output validation** - Validates percentile ordering and numeric values
+5. ✅ **Integrated runtime validation** - All engines now validate outputs automatically
+6. ✅ **Added user controls validation** - Validates input ranges and extreme values
+
+## 🎯 Remaining Action Items
+
+1. **Add stress tests** for large datasets and extreme values
+2. **Add PDF generator tests** - Test PDF generation with various inputs
+3. **Add end-to-end pipeline test with mocks** - Full pipeline test without API calls
+4. **Add performance tests** - Test with large JSON files and many scenarios
 
 ## 📝 Conclusion
 

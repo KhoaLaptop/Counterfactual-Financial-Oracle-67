@@ -15,6 +15,7 @@ from .balance_sheet_checker import (
     validate_financial_ratios,
     check_historical_ranges
 )
+from .validators import validate_critic_output
 
 load_dotenv()
 
@@ -147,6 +148,13 @@ class CriticEngine:
                         # Merge with local checks
                         critic_json["local_checks"] = local_checks
                         
+                        # Validate critic output
+                        is_valid, errors = validate_critic_output(critic_json)
+                        if not is_valid:
+                            print(f"[WARNING] Critic output validation found {len(errors)} issue(s):")
+                            for error in errors[:5]:
+                                print(f"  - {error}")
+                        
                         return critic_json
                     else:
                         error_text = await response.text()
@@ -155,7 +163,16 @@ class CriticEngine:
         
         except Exception as e:
             print(f"DeepSeek API error: {e}, using local checks only")
-            return self._create_fallback_critique(local_checks)
+            critic_json = self._create_fallback_critique(local_checks)
+            
+            # Validate fallback critic output
+            is_valid, errors = validate_critic_output(critic_json)
+            if not is_valid:
+                print(f"[WARNING] Fallback critic output validation found {len(errors)} issue(s):")
+                for error in errors[:5]:
+                    print(f"  - {error}")
+            
+            return critic_json
     
     def _run_local_constraint_checks(
         self,

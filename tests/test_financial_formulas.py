@@ -124,6 +124,32 @@ class TestFinancialFormulas:
         # Check that most values are within reasonable range
         mean_scenario = np.mean(scenarios)
         assert abs(mean_scenario - base_value) < base_value * 0.1
+    
+    def test_calculate_npv_empty_cash_flows(self):
+        """Test NPV calculation with empty cash flows."""
+        cash_flows = []
+        discount_rate = 0.10
+        
+        npv = calculate_npv(cash_flows, discount_rate)
+        assert npv == 0.0
+    
+    def test_calculate_percentiles_empty_list(self):
+        """Test percentile calculation with empty list."""
+        values = []
+        percentiles = calculate_percentiles(values, [10, 50, 90])
+        
+        assert percentiles[10] == 0.0
+        assert percentiles[50] == 0.0
+        assert percentiles[90] == 0.0
+    
+    def test_monte_carlo_simulation_single_scenario(self):
+        """Test Monte Carlo simulation with single scenario."""
+        base_value = 1000000
+        num_scenarios = 1
+        
+        scenarios = monte_carlo_simulation(base_value, num_scenarios, 0.0, 0.01)
+        assert len(scenarios) == 1
+        assert isinstance(scenarios[0], (int, float))
 
 
 if __name__ == "__main__":

@@ -274,6 +274,47 @@ def main():
         
         st.divider()
         
+        # Source tracking sidebar
+        if st.session_state.report_json is not None:
+            st.header("📋 Source Tracking")
+            index = st.session_state.report_json.get("index", {})
+            
+            if index:
+                st.info(f"Found {len(index)} field(s) with source tracking")
+                
+                # Group by extraction method
+                by_method = {}
+                for field_key, source_info in index.items():
+                    method = source_info.get("extraction_method", "unknown")
+                    if method not in by_method:
+                        by_method[method] = []
+                    by_method[method].append((field_key, source_info))
+                
+                for method, fields in by_method.items():
+                    with st.expander(f"{method.replace('_', ' ').title()} ({len(fields)} fields)"):
+                        for field_key, source_info in fields[:10]:  # Show first 10
+                            st.markdown(f"**{field_key}**")
+                            st.text(f"Source: {source_info.get('source', 'Unknown')}")
+                            
+                            if "table_index" in source_info:
+                                st.text(f"Table: {source_info['table_index']}, Row: {source_info.get('row_index', 'N/A')}")
+                            
+                            if "original_text" in source_info:
+                                with st.expander("Original Text"):
+                                    st.text(source_info["original_text"][:200])  # First 200 chars
+                            
+                            if "value_text" in source_info:
+                                st.text(f"Value: {source_info['value_text'][:100]}")
+                            
+                            st.divider()
+                        
+                        if len(fields) > 10:
+                            st.info(f"... and {len(fields) - 10} more fields")
+            else:
+                st.info("No source tracking information available. Fields may have been loaded from JSON without ADE extraction.")
+        
+        st.divider()
+        
         # Run analysis button
         if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
             if st.session_state.report_json is None:
