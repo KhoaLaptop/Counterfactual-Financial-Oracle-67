@@ -12,6 +12,64 @@ Counterfactual Financial Oracle is a complete Python project that implements a c
 - **ChatGPT Evaluator**: Deterministic application of critic fixes and final report generation
 - **Streamlit App**: Interactive web interface with PDF/JSON upload, real-time debate logs, and PDF export
 
+## Architecture
+
+```mermaid
+graph TB
+    subgraph "Input Layer"
+        PDF[PDF Financial Report]
+        JSON[JSON File]
+    end
+    
+    subgraph "Ingestion Module"
+        ADE[Landing AI ADE API]
+        Parser[JSON Parser & Validator]
+        Normalizer[Data Normalizer]
+    end
+    
+    subgraph "Core Processing Pipeline"
+        Sim[Simulation Engine<br/>OpenAI GPT-5-nano]
+        Critic[Critic Engine<br/>DeepSeek]
+        Eval[Evaluator Engine<br/>ChatGPT/OpenAI]
+    end
+    
+    subgraph "Supporting Modules"
+        Formulas[Financial Formulas<br/>EBITDA, EBIT, NPV, IRR]
+        BS_Checker[Balance Sheet Checker<br/>Constraint Validation]
+    end
+    
+    subgraph "Output Layer"
+        PDF_Gen[PDF Generator<br/>ReportLab]
+        Streamlit[Streamlit Web UI]
+    end
+    
+    PDF --> ADE
+    JSON --> Parser
+    ADE --> Normalizer
+    Parser --> Normalizer
+    
+    Normalizer --> Sim
+    Sim --> Formulas
+    Formulas --> Sim
+    
+    Sim --> Critic
+    Critic --> BS_Checker
+    BS_Checker --> Critic
+    
+    Critic --> Eval
+    Eval --> Formulas
+    
+    Eval --> PDF_Gen
+    Eval --> Streamlit
+    PDF_Gen --> Streamlit
+    
+    style Sim fill:#e1f5ff
+    style Critic fill:#fff4e1
+    style Eval fill:#e1ffe1
+    style ADE fill:#ffe1f5
+    style PDF_Gen fill:#f0e1ff
+```
+
 ## Project Structure
 
 ```
@@ -32,6 +90,8 @@ Counterfactual Financial Oracle is a complete Python project that implements a c
 ├── sample_data/                  # Sample datasets
 │   └── sample_report.json
 ├── app.py                        # Streamlit application
+├── main.py                       # CLI entry point
+├── example_usage.py              # Example usage script
 ├── requirements.txt              # Python dependencies
 ├── .env.example                  # Environment variables template
 └── README.md                     # This file

@@ -6,6 +6,62 @@ This project implements a complete financial analysis pipeline that processes La
 
 ## Architecture
 
+### System Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "Input Sources"
+        PDF[PDF Financial Reports]
+        JSON[Pre-extracted JSON Files]
+    end
+    
+    subgraph "Data Ingestion"
+        ADE[Landing AI ADE API<br/>Document Extraction]
+        Ingestion[Ingestion Module<br/>src/ingestion.py<br/>- JSON Parser<br/>- Data Validator<br/>- Field Mapper<br/>- Table Extractor]
+    end
+    
+    subgraph "Core Processing Pipeline"
+        Sim[Simulation Engine<br/>src/simulation.py<br/>OpenAI GPT-5-nano<br/>- Formula Projections<br/>- Monte Carlo 10k scenarios<br/>- Assumption Logging]
+        Critic[Critic Engine<br/>src/critic.py<br/>DeepSeek API<br/>- Constraint Checks<br/>- Industry Comparison<br/>- Sanity Tests]
+        Eval[Evaluator Engine<br/>src/evaluator.py<br/>ChatGPT/OpenAI<br/>- Fix Application<br/>- Revision Engine]
+    end
+    
+    subgraph "Supporting Services"
+        Formulas[Financial Formulas<br/>src/financial_formulas.py<br/>- EBITDA, EBIT, NPV, IRR<br/>- Monte Carlo Simulation]
+        BS_Check[Balance Sheet Checker<br/>src/balance_sheet_checker.py<br/>- Balance Validation<br/>- Cash Flow Consistency<br/>- Ratio Validation]
+    end
+    
+    subgraph "Output Generation"
+        PDF_Gen[PDF Generator<br/>src/pdf_generator.py<br/>ReportLab]
+        UI[Streamlit Web UI<br/>app.py]
+    end
+    
+    PDF --> ADE
+    JSON --> Ingestion
+    ADE --> Ingestion
+    
+    Ingestion --> Sim
+    Sim --> Formulas
+    Formulas --> Sim
+    
+    Sim --> Critic
+    Critic --> BS_Check
+    BS_Check --> Critic
+    
+    Critic --> Eval
+    Eval --> Formulas
+    
+    Eval --> PDF_Gen
+    Eval --> UI
+    PDF_Gen --> UI
+    
+    style Sim fill:#e1f5ff,stroke:#0066cc,stroke-width:2px
+    style Critic fill:#fff4e1,stroke:#cc6600,stroke-width:2px
+    style Eval fill:#e1ffe1,stroke:#00cc00,stroke-width:2px
+    style ADE fill:#ffe1f5,stroke:#cc0066,stroke-width:2px
+    style PDF_Gen fill:#f0e1ff,stroke:#6600cc,stroke-width:2px
+```
+
 ### Components
 
 1. **Ingestion Module** (`src/ingestion.py`)
@@ -62,6 +118,48 @@ This project implements a complete financial analysis pipeline that processes La
 - PDF export
 
 ## Data Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as Streamlit UI
+    participant Ingestion as Ingestion Module
+    participant Sim as Simulation Engine
+    participant Critic as Critic Engine
+    participant Eval as Evaluator Engine
+    participant PDF as PDF Generator
+    
+    User->>UI: Upload PDF/JSON File
+    UI->>Ingestion: Extract/Validate Data
+    Ingestion->>Ingestion: Parse & Normalize
+    Ingestion-->>UI: Normalized JSON
+    
+    User->>UI: Set Controls & Run Analysis
+    UI->>Sim: Run Simulation
+    Sim->>Sim: Formula Calculations
+    Sim->>Sim: Monte Carlo (10k scenarios)
+    Sim-->>UI: Simulation Results
+    
+    UI->>Critic: Run Critique
+    Critic->>Critic: Constraint Checks
+    Critic->>Critic: Industry Comparison
+    Critic->>Critic: Sanity Tests
+    Critic-->>UI: Critique Results (verdict)
+    
+    alt Verdict == "revise"
+        UI->>Eval: Apply Fixes
+        Eval->>Eval: Recalculate Formulas
+        Eval->>Eval: Re-run Monte Carlo
+        Eval-->>UI: Revised Results
+    else Verdict == "approve"
+        Eval-->>UI: Approved Results
+    end
+    
+    UI->>PDF: Generate Report
+    PDF-->>User: Download PDF Report
+```
+
+### Text Flow
 
 ```
 Landing AI ADE JSON

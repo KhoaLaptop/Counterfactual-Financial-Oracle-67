@@ -75,6 +75,26 @@ pytest tests/test_financial_formulas.py
 pytest tests/test_balance_sheet_checker.py
 ```
 
+## Pipeline Flow
+
+```mermaid
+graph LR
+    A[Upload PDF/JSON] --> B[Extract Data]
+    B --> C[Set Controls]
+    C --> D[Run Simulation]
+    D --> E[Critic Review]
+    E --> F{Approved?}
+    F -->|Yes| G[Generate PDF]
+    F -->|No| H[Apply Fixes]
+    H --> D
+    G --> I[Download Report]
+    
+    style A fill:#e1f5ff
+    style D fill:#fff4e1
+    style E fill:#ffe1f5
+    style G fill:#e1ffe1
+```
+
 ## Understanding the Output
 
 ### Simulation Results
