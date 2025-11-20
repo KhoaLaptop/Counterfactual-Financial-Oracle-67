@@ -33,7 +33,7 @@ STRICT RULES:
 Keep responses concise (2-3 paragraphs max) and professional."""
 
 # Round-Specific Prompts
-def get_gemini_opening_prompt(report, simulation):
+def get_gemini_opening_prompt(report, simulation, params):
     """Generate opening statement for Gemini (Optimist)"""
     return f"""
 {GEMINI_PERSONA}
@@ -42,6 +42,8 @@ You are analyzing a COUNTERFACTUAL SIMULATION - a parallel universe scenario bas
 
 HISTORICAL REALITY (from PDF):
 - Current Revenue: ${report.income_statement.Revenue:,.0f}
+- Current COGS: ${report.income_statement.CostOfGoodsSold:,.0f}
+- Current Gross Profit: ${report.income_statement.Revenue - report.income_statement.CostOfGoodsSold:,.0f}
 - Current OpEx: ${report.income_statement.OpEx:,.0f}
 - Current EBITDA: ${report.income_statement.EBITDA:,.0f}
 
@@ -50,25 +52,48 @@ COUNTERFACTUAL SIMULATION RESULTS:
 - Median Revenue: ${simulation.median_revenue:,.0f}
 - Median EBITDA: ${simulation.median_ebitda:,.0f}
 
+SIMULATION PARAMETERS (Slider Settings):
+- OpEx Delta: {params.opex_delta_bps} bps
+- Revenue Growth Delta: {params.revenue_growth_bps} bps
+- Discount Rate Delta: {params.discount_rate_bps} bps
+
+🔒 **STRICT MATHEMATICAL GROUNDING RULES:**
+
+1. **USE CORRECT FORMULAS**: 
+   - **EBITDA = Revenue - COGS - OpEx** (or equivalently: Gross Profit - OpEx)
+   - **NOT** EBITDA = Revenue - OpEx (this is WRONG!)
+   - Show your calculations (e.g., "EBITDA = $119,575 - $64,720 - $14,482 = $40,373")
+
+2. **REFERENCE ONLY ACTUAL NUMBERS**:
+   - From PDF data above
+   - From simulation results above
+   - From slider settings above
+
+3. **DO NOT INVENT**:
+   - ❌ "Strategic restructuring"
+   - ❌ "Operational transformation"
+   - ❌ "Cost optimization programs"
+   - ❌ Any narrative beyond what the deltas mathematically imply
+
+4. **STAY WITHIN MODEL BOUNDARIES**:
+   - The OpEx delta of {params.opex_delta_bps} bps means OpEx changes by {params.opex_delta_bps/10000:.2%}
+   - The revenue delta of {params.revenue_growth_bps} bps means revenue changes by {params.revenue_growth_bps/10000:.2%}
+   - Do NOT speculate beyond these mathematical transformations
+
 ROUND 1: OPENING POSITION
 
-**CRITICAL INSTRUCTION - COUNTERFACTUAL ANCHORING:**
-You MUST anchor your arguments in the DIFFERENCES between historical reality and the counterfactual simulation.
+Present your optimistic analysis of this COUNTERFACTUAL scenario. You MUST:
+1. Show explicit calculations for any claim using the CORRECT formulas
+2. Explain why the counterfactual differs from historical reality using ONLY the slider deltas
+3. Reference specific numbers from the data above
 
-For example:
-- "While historical revenue was ${report.income_statement.Revenue:,.0f}, the counterfactual projects ${simulation.median_revenue:,.0f} because [explain the delta assumptions]"
-- "The NPV of ${simulation.median_npv:,.0f} reflects counterfactual assumptions about [discount rate/growth/efficiency] that differ from historical patterns"
-
-Present your optimistic analysis of this COUNTERFACTUAL scenario. Focus on:
-1. Why the counterfactual NPV is reasonable given the simulation parameters
-2. How the counterfactual differs from historical reality and why
-3. What assumptions in the counterfactual drive the projected outcomes
-
-Be specific and reference the numbers above. DO NOT invent data not shown here.
+Example: "The counterfactual revenue of ${simulation.median_revenue:,.0f} represents a {((simulation.median_revenue - report.income_statement.Revenue) / report.income_statement.Revenue * 100):.2f}% change from the historical ${report.income_statement.Revenue:,.0f}, driven by the {params.revenue_growth_bps} bps growth delta."
 """
 
-def get_deepseek_challenge_prompt(gemini_position, report, simulation):
+def get_deepseek_challenge_prompt(gemini_position, report, simulation, params):
     """Generate DeepSeek's challenge to Gemini's opening"""
+    gross_profit = report.income_statement.Revenue - report.income_statement.CostOfGoodsSold
+    
     return f"""
 {DEEPSEEK_PERSONA}
 
@@ -78,28 +103,54 @@ You just heard this optimistic analysis of a COUNTERFACTUAL SIMULATION:
 
 HISTORICAL REALITY (from PDF):
 - Current Revenue: ${report.income_statement.Revenue:,.0f}
+- Current COGS: ${report.income_statement.CostOfGoodsSold:,.0f}
+- Current Gross Profit: ${gross_profit:,.0f}
 - Current OpEx: ${report.income_statement.OpEx:,.0f}
+- Current EBITDA: ${report.income_statement.EBITDA:,.0f}
 - Current OpEx/Revenue: {(report.income_statement.OpEx / report.income_statement.Revenue * 100):.1f}%
 
 COUNTERFACTUAL SIMULATION:
 - Median NPV: ${simulation.median_npv:,.0f}
 - Median Revenue: ${simulation.median_revenue:,.0f}
+- Median EBITDA: ${simulation.median_ebitda:,.0f}
+
+SIMULATION PARAMETERS (Slider Settings):
+- OpEx Delta: {params.opex_delta_bps} bps ({params.opex_delta_bps/10000:.2%})
+- Revenue Growth Delta: {params.revenue_growth_bps} bps ({params.revenue_growth_bps/10000:.2%})
+- Discount Rate Delta: {params.discount_rate_bps} bps ({params.discount_rate_bps/10000:.2%})
+
+🔒 **STRICT MATHEMATICAL VERIFICATION RULES:**
+
+1. **CHECK THE MATH WITH CORRECT FORMULAS**:
+   - **EBITDA = Revenue - COGS - OpEx** (or equivalently: Gross Profit - OpEx)
+   - **NOT** EBITDA = Revenue - OpEx (this is WRONG!)
+   - Verify: Historical EBITDA = ${report.income_statement.Revenue:,.0f} - ${report.income_statement.CostOfGoodsSold:,.0f} - ${report.income_statement.OpEx:,.0f} = ${gross_profit - report.income_statement.OpEx:,.0f}
+   - Verify: Do the deltas match the slider settings?
+   - Flag any calculation errors
+
+2. **DEMAND EXPLICIT CALCULATIONS**:
+   - If they claim "margin expansion", ask them to show: (EBITDA / Revenue) before vs. after
+   - If they claim "cost reduction", ask: What is the new OpEx value?
+   - If they use EBITDA = Revenue - OpEx, IMMEDIATELY flag this as mathematically incorrect
+
+3. **FLAG INVENTED NARRATIVES**:
+   - ❌ "Strategic initiatives" not in the model
+   - ❌ "Operational improvements" beyond the OpEx delta
+   - ❌ "Market opportunities" not reflected in the revenue delta
+
+4. **VERIFY MODEL BOUNDARIES**:
+   - The OpEx delta of {params.opex_delta_bps} bps is the ONLY cost change
+   - The revenue delta of {params.revenue_growth_bps} bps is the ONLY growth assumption
+   - Anything else is speculation
 
 ROUND 1: CHALLENGE
 
-**CRITICAL INSTRUCTION - COUNTERFACTUAL ANCHORING:**
-You MUST challenge the optimist by comparing the counterfactual assumptions to historical reality.
+Challenge the optimistic view by:
+1. Verifying their calculations (show your work using CORRECT formulas)
+2. Checking if their claims exceed what the slider deltas mathematically allow
+3. Flagging any invented narratives not grounded in the simulation parameters
 
-For example:
-- "The counterfactual assumes [X], but historical data shows [Y]. This delta of [Z] is not justified because..."
-- "The NPV inflation appears driven by [assumption], which contradicts the historical pattern of [pattern]"
-
-Challenge the optimistic view. Focus on:
-1. What counterfactual assumptions contradict historical patterns from the PDF?
-2. Are the simulation deltas (growth, OpEx, discount rate) realistic given the historical baseline?
-3. What evidence from the PDF contradicts the counterfactual optimism?
-
-Be specific and reference concrete concerns. Demand evidence for any claim not grounded in the data.
+Example: "You claim margin expansion, but let me verify using the correct formula. Historical EBITDA margin = ${report.income_statement.EBITDA:,.0f} / ${report.income_statement.Revenue:,.0f} = {(report.income_statement.EBITDA / report.income_statement.Revenue * 100):.1f}%. Counterfactual margin = ${simulation.median_ebitda:,.0f} / ${simulation.median_revenue:,.0f} = {(simulation.median_ebitda / simulation.median_revenue * 100):.1f}%."
 """
 
 def get_gemini_response_prompt(deepseek_challenge, round_num, debate_context):

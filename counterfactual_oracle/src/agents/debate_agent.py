@@ -44,6 +44,7 @@ class DebateAgent:
         self, 
         report: FinancialReport, 
         simulation: AggregatedSimulation,
+        params: 'ScenarioParams',  # Add params for grounding
         max_rounds: int = 10,
         convergence_threshold: int = 2
     ) -> DebateResult:
@@ -53,6 +54,7 @@ class DebateAgent:
         Args:
             report: Financial report data
             simulation: Simulation results
+            params: Scenario parameters (for grounding to actual deltas)
             max_rounds: Maximum debate rounds (safety limit)
             convergence_threshold: Rounds without new objections needed for convergence
             
@@ -65,7 +67,7 @@ class DebateAgent:
         convergence_round = None
         
         # Round 1: Gemini opens with optimistic position (Validated)
-        gemini_opening = self._get_validated_gemini_position(report, simulation, debate_log)
+        gemini_opening = self._get_validated_gemini_position(report, simulation, params, debate_log)
         debate_log.append(DebateTurn(
             round_number=1,
             speaker="Gemini",
@@ -76,7 +78,7 @@ class DebateAgent:
         ))
         
         # Round 1: DeepSeek challenges
-        deepseek_challenge = self._get_deepseek_challenge(gemini_opening, report, simulation, debate_log)
+        deepseek_challenge = self._get_deepseek_challenge(gemini_opening, report, simulation, params, debate_log)
         debate_log.append(DebateTurn(
             round_number=1,
             speaker="DeepSeek",
@@ -94,7 +96,8 @@ class DebateAgent:
                 round_num, 
                 debate_log,
                 report,
-                simulation
+                simulation,
+                params
             )
             debate_log.append(DebateTurn(
                 round_number=round_num,
@@ -152,10 +155,11 @@ class DebateAgent:
         self, 
         report: FinancialReport, 
         simulation: AggregatedSimulation,
+        params: 'ScenarioParams',
         debate_log: List[DebateTurn]
     ) -> str:
         """Get Gemini's opening position with validation retry loop"""
-        prompt = get_gemini_opening_prompt(report, simulation)
+        prompt = get_gemini_opening_prompt(report, simulation, params)
         
         for attempt in range(3):
             response = self.gemini.generate_content(prompt)
@@ -178,7 +182,8 @@ class DebateAgent:
         round_num: int,
         debate_log: List[DebateTurn],
         report: FinancialReport,
-        simulation: AggregatedSimulation
+        simulation: AggregatedSimulation,
+        params: 'ScenarioParams'
     ) -> str:
         """Get Gemini's response with validation retry loop"""
         # Summarize previous Gemini statements
@@ -210,10 +215,11 @@ class DebateAgent:
         gemini_position: str,
         report: FinancialReport,
         simulation: AggregatedSimulation,
+        params: 'ScenarioParams',
         debate_log: List[DebateTurn]
     ) -> str:
         """Get DeepSeek's challenge"""
-        prompt = get_deepseek_challenge_prompt(gemini_position, report, simulation)
+        prompt = get_deepseek_challenge_prompt(gemini_position, report, simulation, params)
         response = self.deepseek.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
@@ -322,17 +328,40 @@ Final Assessment: {verdict}
         agreements = []
         
         for turn in debate_log:
-            msg = turn.message.lower()
-            if any(keyword in msg for keyword in ["i agree", "you're right", "fair point", "concede"]):
-                # Extract the sentence containing agreement
-                sentences = turn.message.split('.')
-                for sent in sentences:
-                    if any(keyword in sent.lower() for keyword in ["agree", "right", "fair", "concede"]):
-                        agreements.append(sent.strip())
-                        break
+            msg = turn.message
+            msg_lower = msg.lower()
+            
+            # Find agreement keywords
+            agreement_keywords = ["i agree", "you're right", "fair point", "i concede", "that makes sense"]
+            
+            for keyword in agreement_keywords:
+                if keyword in msg_lower:
+                    # Find the position of the keyword
+                    keyword_pos = msg_lower.find(keyword)
+                    
+                    # Find the start of the sentence (look backwards for period or start of string)
+                    start = msg.rfind('.', 0, keyword_pos) + 1
+                    if start == 0:  # No period found, start from beginning
+                        start = 0
+                    
+                    # Find the end of the sentence (look forwards for period)
+                    end = msg.find('.', keyword_pos)
+                    if end == -1:  # No period found, go to end
+                        end = len(msg)
+                    else:
+                        end += 1  # Include the period
+                    
+                    # Extract the full sentence
+                    sentence = msg[start:end].strip()
+                    
+                    # Only add if it's meaningful (more than 20 chars)
+                    if len(sentence) > 20:
+                        agreements.append(sentence)
+                        break  # Only one agreement per turn
         
         # Return unique agreements
-        return list(set(agreements))[:5]
+        unique_agreements = list(dict.fromkeys(agreements))  # Preserve order
+        return unique_agreements[:5]
     
     def _extract_disagreements(self, debate_log: List[DebateTurn]) -> List[str]:
         """Extract remaining points of disagreement"""
@@ -342,15 +371,40 @@ Final Assessment: {verdict}
         recent_turns = [t for t in debate_log if t.round_number >= debate_log[-1].round_number - 1]
         
         for turn in recent_turns:
-            msg = turn.message.lower()
-            if any(keyword in msg for keyword in ["however", "but", "concern", "risk", "disagree", "challenge"]):
-                sentences = turn.message.split('.')
-                for sent in sentences:
-                    if any(keyword in sent.lower() for keyword in ["concern", "risk", "however", "but"]):
-                        disagreements.append(sent.strip())
+            msg = turn.message
+            msg_lower = msg.lower()
+            
+            # Find disagreement keywords
+            disagreement_keywords = ["however", "concern", "risk", "challenge", "but"]
+            
+            for keyword in disagreement_keywords:
+                if keyword in msg_lower:
+                    # Find the position of the keyword
+                    keyword_pos = msg_lower.find(keyword)
+                    
+                    # Find the start of the sentence
+                    start = msg.rfind('.', 0, keyword_pos) + 1
+                    if start == 0:
+                        start = 0
+                    
+                    # Find the end of the sentence
+                    end = msg.find('.', keyword_pos)
+                    if end == -1:
+                        end = len(msg)
+                    else:
+                        end += 1
+                    
+                    # Extract the full sentence
+                    sentence = msg[start:end].strip()
+                    
+                    # Only add if meaningful (more than 25 chars)
+                    if len(sentence) > 25:
+                        disagreements.append(sentence)
                         break
         
-        return list(set(disagreements))[:3]
+        # Return unique disagreements
+        unique_disagreements = list(dict.fromkeys(disagreements))
+        return unique_disagreements[:3]
     
     def _determine_verdict(self, debate_log: List[DebateTurn], converged: bool) -> str:
         """Determine final investment verdict from debate"""
