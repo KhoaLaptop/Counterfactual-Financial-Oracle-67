@@ -12,6 +12,14 @@ class SourceMetadata(BaseModel):
     bounding_box: Optional[Dict[str, float]] = None
     extraction_confidence: Optional[float] = None
 
+class PDFMetadata(BaseModel):
+    """Metadata from Landing AI extraction process"""
+    page_count: int
+    duration_ms: float
+    credit_usage: float
+    job_id: str
+    filename: Optional[str] = None
+
 # === TIER 1: MUST-HAVE FINANCIAL STATEMENTS ===
 
 class IncomeStatement(BaseModel):
@@ -132,6 +140,7 @@ class FinancialReport(BaseModel):
     notes: Dict[str, str] = Field(default_factory=dict)
     index: Dict[str, str] = Field(default_factory=dict)
     source_metadata: List[SourceMetadata] = Field(default_factory=list)
+    pdf_metadata: Optional[PDFMetadata] = None
 
 # === SCENARIO AND SIMULATION MODELS ===
 

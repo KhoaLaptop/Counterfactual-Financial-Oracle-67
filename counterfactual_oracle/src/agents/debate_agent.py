@@ -25,12 +25,11 @@ from ..debate_prompts import (
 from .validator import RealismValidatorAgent
 
 class DebateAgent:
-    def __init__(self, kimi_api_key: str, deepseek_api_key: str):
+    def __init__(self, openai_api_key: str, deepseek_api_key: str):
         """Initialize debate agent with API clients"""
-        # Kimi (Optimist) - using moonshot-v1-8k
-        self.kimi = OpenAI(
-            api_key=kimi_api_key,
-            base_url="https://api.moonshot.cn/v1"
+        # OpenAI (Optimist) - using gpt-4o
+        self.openai = OpenAI(
+            api_key=openai_api_key
         )
         
         # DeepSeek (Skeptic)  
@@ -39,8 +38,8 @@ class DebateAgent:
             base_url="https://api.deepseek.com/v1"
         )
         
-        # Realism Validator (using Kimi now)
-        self.validator = RealismValidatorAgent(api_key=kimi_api_key)
+        # RealismValidator (using OpenAI)
+        self.validator = RealismValidatorAgent(api_key=openai_api_key)
         
     def run_debate(
         self, 
@@ -68,11 +67,11 @@ class DebateAgent:
         converged = False
         convergence_round = None
         
-        # Round 1: Optimist (Kimi) opens with optimistic position (Validated)
+        # Round 1: Optimist (OpenAI) opens with optimistic position (Validated)
         optimist_opening = self._get_validated_optimist_position(report, simulation, params, debate_log)
         debate_log.append(DebateTurn(
             round_number=1,
-            speaker="Kimi",
+            speaker="OpenAI",
             role="Optimist",
             message=optimist_opening,
             timestamp=time.time(),
@@ -92,11 +91,10 @@ class DebateAgent:
         
         # Continue debate until convergence or max rounds
         for round_num in range(2, max_rounds + 1):
-            # RATE LIMITING: Pause before next LLM call (Kimi response)
-            # Kimi Tier 0 limit is 3 RPM -> 20s per request. We use 25s to be safe.
-            # The sleep is handled inside _get_validated_optimist_response
+            # RATE LIMITING: Pause before next LLM call (OpenAI response)
+            time.sleep(2)
 
-            # Optimist (Kimi) responds to critique (Validated)
+            # Optimist (OpenAI) responds to critique (Validated)
             optimist_response = self._get_validated_optimist_response(
                 deepseek_challenge, 
                 round_num, 
@@ -107,7 +105,7 @@ class DebateAgent:
             )
             debate_log.append(DebateTurn(
                 round_number=round_num,
-                speaker="Kimi",
+                speaker="OpenAI",
                 role="Optimist",
                 message=optimist_response,
                 timestamp=time.time(),
@@ -170,16 +168,16 @@ class DebateAgent:
         params: 'ScenarioParams',
         debate_log: List[DebateTurn]
     ) -> str:
-        """Get Optimist's (Kimi) opening position with validation retry loop"""
+        """Get Optimist's (OpenAI) opening position with validation retry loop"""
         prompt = get_gemini_opening_prompt(report, simulation, params)
         
         for attempt in range(3):
-            # RATE LIMITING: Strict 25s pause for Kimi Tier 0 (3 RPM)
-            time.sleep(25)
+            # RATE LIMITING: Standard pause
+            time.sleep(2)
             
             try:
-                response = self.kimi.chat.completions.create(
-                    model="moonshot-v1-8k",
+                response = self.openai.chat.completions.create(
+                    model="gpt-4-turbo",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.7
                 )
@@ -194,9 +192,9 @@ class DebateAgent:
                     # Add feedback to prompt and retry
                     prompt += f"\n\n[SYSTEM FEEDBACK]: Your previous response was rejected. Issues: {validation['issues']}. \nFeedback: {validation['feedback']}\n\nPlease rewrite strictly adhering to the data."
             except Exception as e:
-                print(f"Kimi API Error: {e}")
+                print(f"OpenAI API Error: {e}")
                 if attempt == 2: raise e
-                time.sleep(5) # Short backoff on error
+                time.sleep(2) # Short backoff on error
         
         return text # Return last attempt if all fail
 
@@ -209,11 +207,11 @@ class DebateAgent:
         simulation: AggregatedSimulation,
         params: 'ScenarioParams'
     ) -> str:
-        """Get Optimist's (Kimi) response with validation retry loop"""
+        """Get Optimist's (OpenAI) response with validation retry loop"""
         # Summarize previous Optimist statements
         optimist_summary = " ".join([
             t.message[:100] for t in debate_log 
-            if t.speaker == "Kimi"
+            if t.speaker == "OpenAI"
         ])
         
         context = {'gemini_summary': optimist_summary}
@@ -221,12 +219,12 @@ class DebateAgent:
         prompt = get_gemini_response_prompt(deepseek_challenge, round_num, context, report, simulation, params)
         
         for attempt in range(3):
-            # RATE LIMITING: Strict 25s pause for Kimi Tier 0 (3 RPM)
-            time.sleep(25)
+            # RATE LIMITING: Standard pause
+            time.sleep(2)
             
             try:
-                response = self.kimi.chat.completions.create(
-                    model="moonshot-v1-8k",
+                response = self.openai.chat.completions.create(
+                    model="gpt-4-turbo",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.7
                 )
@@ -241,9 +239,9 @@ class DebateAgent:
                     # Add feedback to prompt and retry
                     prompt += f"\n\n[SYSTEM FEEDBACK]: Your previous response was rejected. Issues: {validation['issues']}. \nFeedback: {validation['feedback']}\n\nPlease rewrite strictly adhering to the data."
             except Exception as e:
-                print(f"Kimi API Error: {e}")
+                print(f"OpenAI API Error: {e}")
                 if attempt == 2: raise e
-                time.sleep(5)
+                time.sleep(2)
                 
         return text
     
@@ -293,34 +291,43 @@ class DebateAgent:
     
     def _check_convergence(self, debate_log: List[DebateTurn]) -> bool:
         """
-        Check if the debate has converged
-        
-        Convergence indicators:
-        - Both agents use agreement language ("I agree", "You're right")
-        - No new objections in last 2 turns
-        - Similar conclusions being drawn
+        Check if the debate has converged using LLM analysis
         """
         if len(debate_log) < 4:
             return False
+            
+        # Construct transcript of last 4 turns
+        transcript = "\n\n".join([
+            f"{t.speaker} ({t.role}): {t.message}" 
+            for t in debate_log[-4:]
+        ])
         
-        # Get last 2 messages from each agent
-        recent_messages = [t.message.lower() for t in debate_log[-4:]]
+        prompt = CONVERGENCE_ANALYSIS_PROMPT.format(debate_transcript=transcript)
         
-        # Check for agreement keywords
-        agreement_keywords = [
-            "i agree", "you're right", "fair point", "i concede",
-            "that makes sense", "good point", "i accept", "converge",
-            "consensus", "we agree", "aligned"
-        ]
-        
-        agreement_count = sum(
-            1 for msg in recent_messages 
-            for keyword in agreement_keywords 
-            if keyword in msg
-        )
-        
-        # If 2+ agreement statements in last 4 messages, likely converging
-        return agreement_count >= 2
+        try:
+            # RATE LIMITING: Standard pause
+            time.sleep(1)
+            
+            response = self.openai.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1
+            )
+            result = response.choices[0].message.content.strip().upper()
+            
+            print(f"Convergence Check Result: {result}")
+            
+            if "CONVERGED" in result:
+                return True
+            elif "PARTIAL" in result and len(debate_log) >= 8:
+                # Accept partial convergence if debate is long enough
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            print(f"Convergence check failed: {e}")
+            return False
     
     def _synthesize_consensus(
         self, 
@@ -338,12 +345,12 @@ class DebateAgent:
         prompt = get_consensus_prompt(debate_history, final_round=True)
         
         try:
-            # RATE LIMITING: Strict 25s pause for Kimi
-            time.sleep(25)
+            # RATE LIMITING: Standard pause
+            time.sleep(2)
             
-            # Call Kimi to synthesize consensus
-            response = self.kimi.chat.completions.create(
-                model="moonshot-v1-8k",
+            # Call OpenAI to synthesize consensus
+            response = self.openai.chat.completions.create(
+                model="gpt-4-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.5
             )

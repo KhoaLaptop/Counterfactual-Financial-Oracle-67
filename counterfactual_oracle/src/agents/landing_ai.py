@@ -5,7 +5,8 @@ from typing import Dict, Any, Optional, List
 from ..models import (
     FinancialReport, IncomeStatement, BalanceSheet, CashFlow,
     SegmentData, GeographicData, DebtSchedule, 
-    ForwardLookingData, NonGAAPMetrics, LegalAndRegulatory
+    ForwardLookingData, NonGAAPMetrics, LegalAndRegulatory,
+    PDFMetadata
 )
 
 class LandingAIClient:
@@ -448,5 +449,12 @@ class LandingAIClient:
                 "OpEx": "Landing AI ADE",
                 "EBITDA": "Calculated"
             },
-            source_metadata=[]
+            source_metadata=[],
+            pdf_metadata=PDFMetadata(
+                page_count=raw_data.get('metadata', {}).get('page_count', 0),
+                duration_ms=raw_data.get('metadata', {}).get('duration_ms', 0.0),
+                credit_usage=raw_data.get('metadata', {}).get('credit_usage', 0.0),
+                job_id=raw_data.get('metadata', {}).get('job_id', 'unknown'),
+                filename=raw_data.get('metadata', {}).get('filename')
+            )
         )

@@ -121,8 +121,8 @@ def run_monte_carlo(base_report: FinancialReport, params: ScenarioParams, num_si
         for t in range(1, forecast_years + 1):
             # 1. Revenue Propagation
             # Revenue grows by (Base Growth + Delta)
-            # Let's assume base organic growth is 3% + user delta
-            organic_growth = 0.03 
+            # Use historical RevenueGrowth from KPIs as baseline, default to 3% if missing
+            organic_growth = base_report.kpis.get("RevenueGrowth", 0.03)
             total_rev_growth = organic_growth + sim_rev_growth
             curr_rev = curr_rev * (1 + total_rev_growth)
             

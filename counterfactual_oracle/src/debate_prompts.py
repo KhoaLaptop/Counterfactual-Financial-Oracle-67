@@ -176,6 +176,7 @@ HISTORICAL REALITY (from PDF):
 - Current OpEx: ${report.income_statement.OpEx:,.0f}
 - Current EBITDA: ${report.income_statement.EBITDA:,.0f}
 - Current Free Cash Flow: ${historical_fcf:,.0f}
+- Current Cash Balance: ${report.balance_sheet.Cash:,.0f} (Liquidity Buffer)
 
 SIMULATION PARAMETERS (The "Knobs"):
 - OpEx Delta: {params.opex_delta_bps} bps (Structural shift in efficiency)
@@ -197,6 +198,12 @@ The engine has ALREADY calculated the future.
 - **DO NOT** recalculate any numbers. Use the forecast above.
 - **DO NOT** question "how" the numbers were derived. They are facts in this timeline.
 - **DO NOT** invent narratives like "new product launch" unless the delta implies it.
+
+⚠️ **SOLVENCY LOGIC GATE:**
+- You are provided with the `Current Cash Balance`.
+- **IF** Cash > 3x (FCF Burn or Negative FCF), **DO NOT** raise solvency/liquidity concerns.
+- Instead, focus on **capital efficiency** (e.g., "Lazy Capital" or ROIC).
+- **DO NOT** claim the company needs external financing if it has massive cash reserves.
 
 ROUND 1: OPENING POSITION
 
@@ -239,6 +246,7 @@ HISTORICAL REALITY (from PDF):
 - Current OpEx: ${report.income_statement.OpEx:,.0f}
 - Current EBITDA: ${report.income_statement.EBITDA:,.0f}
 - Current Free Cash Flow: ${historical_fcf:,.0f}
+- Current Cash Balance: ${report.balance_sheet.Cash:,.0f} (Liquidity Buffer)
 
 SIMULATION PARAMETERS (The "Knobs"):
 - OpEx Delta: {params.opex_delta_bps} bps
@@ -259,6 +267,12 @@ The engine has ALREADY calculated the future.
 ⛔ **STRICT PROHIBITIONS:**
 - **DO NOT** recalculate any numbers. Use the forecast above.
 - **DO NOT** question "how" the numbers were derived. They are facts in this timeline.
+
+⚠️ **SOLVENCY LOGIC GATE:**
+- You are provided with the `Current Cash Balance`.
+- **IF** Cash > 3x (FCF Burn or Negative FCF), **DO NOT** raise solvency/liquidity concerns.
+- Instead, focus on **capital efficiency** (e.g., "Lazy Capital" or ROIC).
+- **DO NOT** claim the company needs external financing if it has massive cash reserves.
 
 ROUND 1: CHALLENGE
 
@@ -281,6 +295,7 @@ def get_gemini_response_prompt(deepseek_challenge, round_num, debate_context, re
         
         # Build FCF trajectory reminder
         fcf_reminder = "\n🔥 CRITICAL DATA REMINDER (You have access to this data):\n"
+        fcf_reminder += f"Current Cash Balance: ${report.balance_sheet.Cash:,.0f}\n"
         fcf_reminder += f"Historical FCF: ${historical_fcf:,.0f}\n"
         fcf_reminder += "Projected FCF (Year-by-Year):\n"
         for t, fcf in enumerate(simulation.fcf_forecast_p50, start=1):
@@ -310,6 +325,12 @@ Defend the counterfactual timeline using the **OPTIMIST RESPONSE TEMPLATE**:
 4. **Justify Valuation**: Explain why the long-term outlook (NPV) remains attractive despite near-term risks.
 
 Respond to their concerns directly using the simulation data above.
+
+⚠️ **CONSENSUS PHASE (Round 4+):**
+If this is Round 4 or later, and you feel the major points have been addressed:
+- **Seek Convergence**: Acknowledge valid counter-arguments.
+- **Find Common Ground**: Use language like "We can agree that..." or "It is fair to conclude...".
+- **Do not nitpick**: If the core thesis holds, move towards a shared verdict.
 """
 
 def get_deepseek_counter_prompt(gemini_response, round_num, debate_context, report=None, simulation=None, params=None):
@@ -322,6 +343,7 @@ def get_deepseek_counter_prompt(gemini_response, round_num, debate_context, repo
         
         # Build FCF trajectory reminder
         fcf_reminder = "\n🔥 CRITICAL DATA REMINDER (You have access to this data):\n"
+        fcf_reminder += f"Current Cash Balance: ${report.balance_sheet.Cash:,.0f}\n"
         fcf_reminder += f"Historical FCF: ${historical_fcf:,.0f}\n"
         fcf_reminder += "Projected FCF (Year-by-Year):\n"
         for t, fcf in enumerate(simulation.fcf_forecast_p50, start=1):
@@ -351,7 +373,13 @@ Continue to critique the counterfactual timeline using the data above.
 4. Stick to the **Explanation Framework**.
 
 Press them on the *consequences* of the simulation data shown above.
-"""
+
+    ⚠️ **CONSENSUS PHASE (Round 4+):**
+    If this is Round 4 or later, and the optimist has conceded valid points:
+    - **Seek Convergence**: Acknowledge their concessions.
+    - **Find Common Ground**: Use language like "I agree with the assessment that..." or "We are aligned on...".
+    - **Do not nitpick**: If the core risks are acknowledged, move towards a shared verdict.
+    """
 
 def get_consensus_prompt(debate_history, final_round=False):
     """Generate consensus-building prompt for both agents"""

@@ -132,6 +132,16 @@ with upload_tab1:
             try:
                 report = landing_client.extract_data(temp_pdf_path)
                 st.success("✅ Data extracted successfully!")
+                
+                # Display Extraction Metrics
+                if report.pdf_metadata:
+                    m_col1, m_col2, m_col3 = st.columns(3)
+                    with m_col1:
+                        st.metric("Processing Time", f"{report.pdf_metadata.duration_ms/1000:.1f}s")
+                    with m_col2:
+                        st.metric("Pages Processed", report.pdf_metadata.page_count)
+                    with m_col3:
+                        st.metric("Credits Used", f"{report.pdf_metadata.credit_usage:.1f}")
             except Exception as e:
                 st.error(f"Error extracting data: {str(e)}")
                 st.stop()
@@ -463,8 +473,9 @@ if report is not None:
                 with st.spinner("🤖 AI analysts are debating... This may take 30-60 seconds"):
                     from src.agents.debate_agent import DebateAgent
                 
+                    # Initialize Debate Agent
                     debate_agent = DebateAgent(
-                        kimi_api_key=os.getenv("KIMI_API_KEY"),
+                        openai_api_key=os.getenv("OPENAI_API_KEY"),
                         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY")
                     )
                 
@@ -472,7 +483,7 @@ if report is not None:
                         report=report,
                         simulation=st.session_state.simulation_results,
                         params=st.session_state.params,  # Use params from session state
-                        max_rounds=5
+                        max_rounds=10
                     )
                 
                 st.success(f"✅ Debate completed in {st.session_state.debate_result.total_rounds} rounds!")
@@ -503,7 +514,7 @@ if report is not None:
             with st.expander("📜 View Full Debate Transcript", expanded=True):
                 for turn in debate.debate_log:
                     # Determine color based on speaker
-                    if turn.speaker == "Kimi":
+                    if turn.speaker == "OpenAI":
                         bg_color = "rgba(16, 185, 129, 0.1)"  # Green tint
                         border_color = "#10B981"
                         icon = "🟢"
@@ -521,16 +532,16 @@ if report is not None:
                         margin-bottom: 0.75rem;
                     ">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                            <strong style="font-size: 0.875rem;">{icon} {turn.speaker} ({turn.role})</strong>
-                            <span style="font-size: 0.75rem; color: var(--muted-foreground);">Round {turn.round_number}</span>
+                            <strong style="font-size: 0.875rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">{icon} {turn.speaker} ({turn.role})</strong>
+                            <span style="font-size: 0.75rem; color: var(--muted-foreground); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Round {turn.round_number}</span>
                         </div>
-                        <p style="margin: 0; font-size: 0.875rem; line-height: 1.6;">{turn.message}</p>
+                        <p style="margin: 0; font-size: 0.875rem; line-height: 1.6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; white-space: pre-wrap;">{turn.message.replace('$', '\$')}</p>
                     </div>
                     """, unsafe_allow_html=True)
         
             # Consensus summary
             st.markdown("### 🎯 Consensus Summary")
-            st.markdown(debate.consensus_summary)
+            st.markdown(debate.consensus_summary.replace('$', '\$'))
         
             # Final verdict
             st.markdown(f"""
